@@ -68,13 +68,13 @@ func openAPIDoc() map[string]interface{} {
 				"ScanJob": map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"job_id":    map[string]interface{}{"type": "string"},
-						"status":    map[string]interface{}{"type": "string", "enum": []string{"queued", "running", "complete", "error"}},
-						"profile":   map[string]interface{}{"type": "string"},
+						"job_id":     map[string]interface{}{"type": "string"},
+						"status":     map[string]interface{}{"type": "string", "enum": []string{"queued", "running", "complete", "error"}},
+						"profile":    map[string]interface{}{"type": "string"},
 						"created_at": map[string]interface{}{"type": "string"},
-						"findings":  map[string]interface{}{"type": "integer"},
-						"packages":  map[string]interface{}{"type": "integer"},
-						"error":     map[string]interface{}{"type": "string"},
+						"findings":   map[string]interface{}{"type": "integer"},
+						"packages":   map[string]interface{}{"type": "integer"},
+						"error":      map[string]interface{}{"type": "string"},
 					},
 				},
 				"ScheduleRequest": map[string]interface{}{
@@ -105,9 +105,9 @@ func openAPIDoc() map[string]interface{} {
 		"paths": map[string]interface{}{
 			"/health": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary": "Health check",
+					"summary":     "Health check",
 					"description": "Liveness probe. No auth required.",
-					"security": []interface{}{},
+					"security":    []interface{}{},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "OK"},
 					},
@@ -123,7 +123,7 @@ func openAPIDoc() map[string]interface{} {
 			},
 			"/scan": map[string]interface{}{
 				"post": map[string]interface{}{
-					"summary": "Trigger a synchronous scan",
+					"summary":     "Trigger a synchronous scan",
 					"description": "Runs a scan and streams NDJSON results back. Blocks until complete.",
 					"requestBody": map[string]interface{}{
 						"required": true,
@@ -134,16 +134,16 @@ func openAPIDoc() map[string]interface{} {
 						},
 					},
 					"responses": map[string]interface{}{
-						"200":     map[string]interface{}{"description": "NDJSON stream of package/finding/summary records"},
-						"400":     map[string]interface{}{"description": "Bad request"},
-						"401":     map[string]interface{}{"description": "Unauthorized"},
-						"429":     map[string]interface{}{"description": "Rate limit exceeded"},
+						"200": map[string]interface{}{"description": "NDJSON stream of package/finding/summary records"},
+						"400": map[string]interface{}{"description": "Bad request"},
+						"401": map[string]interface{}{"description": "Unauthorized"},
+						"429": map[string]interface{}{"description": "Rate limit exceeded"},
 					},
 				},
 			},
 			"/scan/async": map[string]interface{}{
 				"post": map[string]interface{}{
-					"summary": "Submit an async scan job",
+					"summary":     "Submit an async scan job",
 					"description": "Queues a scan and returns a job ID immediately. Poll /scan/{job_id} for status.",
 					"requestBody": map[string]interface{}{
 						"required": true,
@@ -209,10 +209,19 @@ func openAPIDoc() map[string]interface{} {
 			},
 			"/openapi.json": map[string]interface{}{
 				"get": map[string]interface{}{
-					"summary": "OpenAPI specification",
+					"summary":  "OpenAPI specification",
 					"security": []interface{}{},
 					"responses": map[string]interface{}{
 						"200": map[string]interface{}{"description": "OpenAPI 3.1 JSON"},
+					},
+				},
+			},
+			"/metrics": map[string]interface{}{
+				"get": map[string]interface{}{
+					"summary":  "Prometheus metrics",
+					"security": []interface{}{},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{"description": "Prometheus text format metrics"},
 					},
 				},
 			},

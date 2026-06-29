@@ -78,6 +78,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/metrics", metricsHandler)
 	mux.HandleFunc("/openapi.json", openAPIHandler)
 	mux.HandleFunc("/catalogs", authMiddleware(rateLimitMiddleware(rl, catalogsHandler)))
 	mux.HandleFunc("/scan", authMiddleware(rateLimitMiddleware(rl, scanHandler)))
@@ -401,6 +402,8 @@ func scanHandler(w http.ResponseWriter, r *http.Request) {
 	if flusher != nil {
 		flusher.Flush()
 	}
+
+	metricsCollector.recordSyncScan(res.Duration, res.FindingsEmitted, res.RecordsEmitted, runErr != nil)
 }
 
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {

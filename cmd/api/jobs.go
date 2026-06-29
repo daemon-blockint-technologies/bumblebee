@@ -323,6 +323,8 @@ func (q *jobQueue) runJob(job *scanJob, req asyncScanRequest, roots []scanner.Ro
 	if req.WebhookURL != "" && res.FindingsEmitted > 0 {
 		sendWebhookNotification(req.WebhookURL, job, res.FindingsEmitted)
 	}
+
+	metricsCollector.recordAsyncScan(res.Duration, res.FindingsEmitted, res.RecordsEmitted, runErr != nil)
 }
 
 // scanSubHandler routes /scan/{job_id} and /scan/{job_id}/results.

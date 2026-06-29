@@ -36,6 +36,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, func()) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
 	mux.HandleFunc("/openapi.json", openAPIHandler)
+	mux.HandleFunc("/metrics", metricsHandler)
 	mux.HandleFunc("/catalogs", authMiddleware(rateLimitMiddleware(rl, catalogsHandler)))
 	mux.HandleFunc("/scan", authMiddleware(rateLimitMiddleware(rl, scanHandler)))
 	mux.HandleFunc("/scan/async", authMiddleware(rateLimitMiddleware(rl, jobs.asyncScanHandler)))
@@ -330,4 +331,28 @@ func TestRateLimiting(t *testing.T) {
 		t.Fatalf("expected 429, got %d", resp.StatusCode)
 	}
 	resp.Body.Close()
+}
+
+func TestMetricsEndpoint(t *testing.T) {
+	srv, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	resp := doRequest(t, srv, "GET", "/metrics", nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("status=%d", resp.StatusCode)
+	}
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(resp.Body)
+	resp.Body.Close()
+
+	body := buf.String()
+	if !strings.Contains(body, "bumblebee_scans_total") {
+		t.Error("missing bumblebee_scans_total metric")
+	}
+	if !strings.Contains(body, "bumblebee_findings_total") {
+		t.Error("missing bumblebee_findings_total metric")
+	}
+	if !strings.Contains(body, "bumblebee_api_uptime_seconds") {
+		t.Error("missing uptime metric")
+	}
 }

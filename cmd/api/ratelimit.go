@@ -85,6 +85,7 @@ func rateLimitMiddleware(rl *rateLimiter, next http.HandlerFunc) http.HandlerFun
 		if !rl.allow(ip) {
 			w.Header().Set("Retry-After", "60")
 			http.Error(w, `{"error":"rate_limit_exceeded","message":"too many requests"}`, http.StatusTooManyRequests)
+			metricsCollector.recordRateLimited()
 			return
 		}
 		next(w, r)

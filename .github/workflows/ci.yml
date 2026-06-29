@@ -43,8 +43,14 @@ jobs:
       - name: go test (race)
         run: go test -race ./...
 
-      - name: go build
+      - name: go build (CLI)
         run: go build -buildvcs=false ./cmd/bumblebee
+
+      - name: go build (API)
+        run: go build -buildvcs=false ./cmd/api
+
+      - name: go test (API)
+        run: go test -race -timeout 60s ./cmd/api/
 
       - name: bumblebee selftest
         run: |
