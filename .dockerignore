@@ -1,0 +1,9 @@
+.git
+.github
+docs
+cmd/bumblebee
+tools
+*.md
+*.yaml
+LICENSE
+VERSION
