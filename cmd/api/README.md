@@ -231,4 +231,169 @@ API_TOKEN=dev-token go run ./cmd/api/
 
 # Test
 go test -v ./cmd/api/
+
+# Test with race detector
+go test -race -timeout 60s ./cmd/api/
+```
+
+---
+
+## NDJSON Record Schemas
+
+Scan output streams (`POST /scan` and `GET /scan/{job_id}/results`) emit one JSON object per line. Each record has a `record_type` field:
+
+### `package` — Discovered Package
+
+```json
+{
+  "record_type": "package",
+  "record_id": "sha256:...",
+  "schema_version": "0.1.0",
+  "scanner_name": "bumblebee",
+  "run_id": "abc123",
+  "scan_time": "2026-06-29T10:00:00Z",
+  "endpoint": {"hostname": "dev-laptop", "os": "darwin", "arch": "arm64", "username": "dev", "uid": "501"},
+  "profile": "deep",
+  "ecosystem": "npm",
+  "package_name": "left-pad",
+  "normalized_name": "left-pad",
+  "version": "1.3.0",
+  "root_kind": "project_root",
+  "source_type": "lockfile",
+  "source_file": "package-lock.json",
+  "has_lifecycle_scripts": false,
+  "confidence": "high"
+}
+```
+
+### `finding` — Exposure Match
+
+```json
+{
+  "record_type": "finding",
+  "record_id": "sha256:...",
+  "finding_type": "package_exposure",
+  "severity": "critical",
+  "catalog_id": "evil-001",
+  "catalog_name": "evil@1.2.3",
+  "ecosystem": "npm",
+  "package_name": "evil",
+  "normalized_name": "evil",
+  "version": "1.2.3",
+  "confidence": "high"
+}
+```
+
+### `scan_summary` — Run Terminator (always last line)
+
+```json
+{
+  "record_type": "scan_summary",
+  "run_id": "abc123",
+  "status": "complete",
+  "profile": "deep",
+  "roots": [{"path": "/Users/dev/project", "kind": "project_root"}],
+  "package_records_emitted": 42,
+  "findings_emitted": 3,
+  "duplicates": 1,
+  "files_considered": 128,
+  "timed_out": false,
+  "duration_ms": 5234
+}
+```
+
+**Scan summary status values:** `complete`, `partial` (some records emitted before error), `error`.
+
+---
+
+## Job Status Values
+
+| Status | Description |
+|--------|-------------|
+| `queued` | Job accepted, waiting for worker |
+| `running` | Scan in progress |
+| `complete` | Scan finished successfully |
+| `error` | Scan failed (see `error` field) |
+
+Job queue limits: 100 concurrent jobs. Oldest completed/errored jobs evicted when full.
+
+---
+
+## Webhook Notifications
+
+When a scan with `webhook_url` finds exposures (`findings > 0`), the API posts a notification.
+
+**Discord** (auto-detected from `discord.com/api/webhooks` URL):
+
+```json
+{
+  "embeds": [{
+    "title": "🚨 Bumblebee: 3 exposure findings detected",
+    "description": "Scan job `a1b2c3d4` (profile: deep) found 3 findings and 42 packages.",
+    "color": 16711680,
+    "timestamp": "2026-06-29T10:00:05Z",
+    "footer": {"text": "bumblebee-api 0.1.1-api"}
+  }]
+}
+```
+
+**Slack** (all other URLs):
+
+```json
+{
+  "attachments": [{
+    "color": "danger",
+    "title": "🚨 Bumblebee: 3 exposure findings detected",
+    "text": "Scan job `a1b2c3d4` (profile: deep) found 3 findings and 42 packages.",
+    "footer": "bumblebee-api 0.1.1-api",
+    "ts": 1719655205
+  }]
+}
+```
+
+---
+
+## Prometheus Metrics
+
+`GET /metrics` — no auth required.
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `bumblebee_api_uptime_seconds` | gauge | Seconds since server start |
+| `bumblebee_scans_total` | counter | Total scans (sync + async) |
+| `bumblebee_scans_sync_total` | counter | Synchronous scans |
+| `bumblebee_scans_async_total` | counter | Asynchronous scans |
+| `bumblebee_findings_total` | counter | Total findings across all scans |
+| `bumblebee_packages_total` | counter | Total packages inventoried |
+| `bumblebee_scan_errors_total` | counter | Scans that ended with error |
+| `bumblebee_rate_limited_total` | counter | Requests rejected by rate limiter |
+| `bumblebee_requests_total` | counter | Total authenticated requests |
+| `bumblebee_scan_duration_ms_bucket` | histogram | Duration distribution (buckets: 100ms–5min) |
+
+---
+
+## Error Responses
+
+| Status | Description |
+|--------|-------------|
+| `400` | Bad request — invalid JSON, missing required field, unsupported ecosystem |
+| `401` | Unauthorized — missing or invalid bearer token |
+| `404` | Not found — job ID or schedule name doesn't exist |
+| `405` | Method not allowed — wrong HTTP method for endpoint |
+| `409` | Conflict — results requested before job is complete |
+| `429` | Rate limited — too many requests (includes `Retry-After` header) |
+| `500` | Internal server error |
+
+```json
+{"error":"rate_limit_exceeded","message":"too many requests"}
+```
+
+---
+
+## OpenAPI Spec
+
+The full OpenAPI 3.1 specification is served at `/openapi.json`. Import into Swagger UI, Postman, or generate client SDKs:
+
+```sh
+curl https://bumblebee-api-production-1610.up.railway.app/openapi.json | jq '.paths | keys'
 ```
