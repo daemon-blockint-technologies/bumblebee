@@ -7,3 +7,5 @@
 
 # goreleaser output
 /dist/
+.railway-config-pull-86090/
+/api

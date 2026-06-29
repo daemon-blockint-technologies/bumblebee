@@ -1,17 +1,28 @@
 // Command api is an HTTP wrapper around the bumblebee scanner.
 //
-// It exposes a small REST API to trigger on-demand scans and return
-// NDJSON results. Designed for deployment on Railway (or any container
-// platform) with health checks, bearer-token auth, and streaming output.
+// It exposes a REST API to trigger on-demand and async scans, manage
+// scheduled scans, and return NDJSON results. Designed for deployment
+// on Railway (or any container platform) with health checks, bearer-token
+// auth, rate limiting, and streaming output.
 //
 // Endpoints:
 //
-//	GET  /health    — liveness probe (200 OK)
-//	GET  /catalogs  — list available threat_intel catalogs
-//	POST /scan      — trigger a scan, stream NDJSON back
+//	GET  /health          — liveness probe (200 OK)
+//	GET  /openapi.json    — OpenAPI 3.1 specification
+//	GET  /catalogs        — list available threat_intel catalogs
+//	POST /scan            — trigger a sync scan, stream NDJSON back
+//	POST /scan/async      — submit an async scan job, returns job_id
+//	GET  /scan/{job_id}   — get async scan job status
+//	GET  /scan/{job_id}/results — get async scan NDJSON results
+//	GET  /schedules       — list scheduled scans
+//	POST /schedules       — create a scheduled scan (cron + webhook)
+//	DELETE /schedules?name=N — delete a scheduled scan
 //
 // Auth: Bearer token via API_TOKEN env var. If unset, auth is disabled
 // (development only). In production, always set API_TOKEN.
+//
+// Rate limiting: RATE_LIMIT_PER_HOUR env var (default 60). Per-client IP.
+// Scheduled scans: SCHEDULES env var (JSON array) for bootstrap config.
 package main
 
 import (
@@ -39,19 +50,40 @@ import (
 )
 
 var (
-	version    = "dev"
-	apiToken   = os.Getenv("API_TOKEN")
-	catalogDir = os.Getenv("CATALOG_DIR")
+	version      = "dev"
+	apiToken     = os.Getenv("API_TOKEN")
+	catalogDir   = os.Getenv("CATALOG_DIR")
+	rateLimitPer = getEnvInt("RATE_LIMIT_PER_HOUR", 60)
+	jobs         *jobQueue
+	schedMgr     *scheduleManager
 )
 
 func main() {
 	addr := flag.String("addr", getEnvDefault("ADDR", ":8080"), "listen address")
 	flag.Parse()
 
+	jobs = newJobQueue(100)
+	schedMgr = newScheduleManager(jobs)
+	schedMgr.initFromEnv()
+	schedMgr.start()
+
+	rl := newRateLimiter(rateLimitPer, time.Hour)
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			rl.cleanup()
+		}
+	}()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", healthHandler)
-	mux.HandleFunc("/catalogs", authMiddleware(catalogsHandler))
-	mux.HandleFunc("/scan", authMiddleware(scanHandler))
+	mux.HandleFunc("/openapi.json", openAPIHandler)
+	mux.HandleFunc("/catalogs", authMiddleware(rateLimitMiddleware(rl, catalogsHandler)))
+	mux.HandleFunc("/scan", authMiddleware(rateLimitMiddleware(rl, scanHandler)))
+	mux.HandleFunc("/scan/async", authMiddleware(rateLimitMiddleware(rl, jobs.asyncScanHandler)))
+	mux.HandleFunc("/scan/", authMiddleware(rateLimitMiddleware(rl, jobs.scanSubHandler)))
+	mux.HandleFunc("/schedules", authMiddleware(rateLimitMiddleware(rl, schedMgr.handleSchedules)))
 
 	srv := &http.Server{
 		Addr:              *addr,
@@ -72,6 +104,7 @@ func main() {
 	}()
 
 	fmt.Fprintf(os.Stderr, "bumblebee-api %s listening on %s\n", version, *addr)
+	fmt.Fprintf(os.Stderr, "rate limit: %d req/hour per IP\n", rateLimitPer)
 	if apiToken == "" {
 		fmt.Fprintf(os.Stderr, "WARNING: API_TOKEN not set — auth disabled (development mode)\n")
 	}
@@ -83,11 +116,22 @@ func main() {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
+	schedMgr.stop()
 }
 
 func getEnvDefault(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
+	}
+	return def
+}
+
+func getEnvInt(key string, def int) int {
+	if v := os.Getenv(key); v != "" {
+		var n int
+		if _, err := fmt.Sscanf(v, "%d", &n); err == nil && n > 0 {
+			return n
+		}
 	}
 	return def
 }
